@@ -39,6 +39,28 @@ export default function ImportCanvas({ shareId, user }) {
       const issuesSnapshot = await getDocs(collection(db, 'sharedCanvases', sharedCanvas.id, 'issues'));
       const issuesData = issuesSnapshot.docs.map(doc => doc.data());
 
+      // Sync labels before creating the project
+      const labelsToImport = sharedCanvas.labelsSnapshot || [];
+      if (labelsToImport.length > 0) {
+        // Get the current user's existing labels
+        const userLabelsRef = collection(db, 'users', user.uid, 'labels');
+        const userLabelsSnapshot = await getDocs(userLabelsRef);
+        const existingLabelNames = userLabelsSnapshot.docs.map(doc => doc.data().name);
+
+        // Filter out labels that the user already has
+        const newLabels = labelsToImport.filter(label => !existingLabelNames.includes(label.name));
+        
+        // Batch write the new labels to the user's collection
+        if (newLabels.length > 0) {
+          const labelBatch = writeBatch(db);
+          newLabels.forEach(label => {
+            const newUserLabelRef = doc(collection(db, 'users', user.uid, 'labels'));
+            labelBatch.set(newUserLabelRef, { name: label.name, color: label.color });
+          });
+          await labelBatch.commit();
+        }
+      }
+
       // 2. Create a new project for the current user
       const newProjectRef = await addDoc(collection(db, 'projects'), {
         name: `Copy of ${sharedCanvas.name}`,

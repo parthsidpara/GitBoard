@@ -55,11 +55,17 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
     const issuesSnapshot = await getDocs(issuesRef);
     const issuesData = issuesSnapshot.docs.map(doc => doc.data());
 
+    // Get the user's custom labels to create a full snapshot
+    const labelsRef = collection(db, 'users', user.uid, 'labels');
+    const labelsSnapshot = await getDocs(labelsRef);
+    const customLabelsData = labelsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     // 2. Create a new document in the public 'sharedCanvases' collection
     const sharedCanvasRef = await addDoc(collection(db, 'sharedCanvases'), {
       name: project.name,
       originalOwnerId: user.uid,
       sharedAt: serverTimestamp(),
+      labelsSnapshot: customLabelsData
     });
 
     // 3. Use a batch write to copy all issues to the new public subcollection
