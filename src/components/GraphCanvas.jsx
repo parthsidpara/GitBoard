@@ -17,7 +17,7 @@ const defaultLabels = [
 
 export default function GraphCanvas({ projectId }) {
   const [issues, setIssues] = useState([]);
-  const [userLabels, setUserLabels] = useState([]);
+  // const [userLabels, setUserLabels] = useState([]);
   const [combinedLabels, setCombinedLabels] = useState(defaultLabels);
   const [isModalOpen, setModalOpen] = useState(false);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -32,7 +32,7 @@ export default function GraphCanvas({ projectId }) {
     if (!user) return;
     const labelsUnsub = onSnapshot(collection(db, 'users', user.uid, 'labels'), (snapshot) => {
       const fetchedUserLabels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUserLabels(fetchedUserLabels);
+      // setUserLabels(fetchedUserLabels);
       setCombinedLabels([...defaultLabels, ...fetchedUserLabels]);
     });
     return () => labelsUnsub();
@@ -46,8 +46,10 @@ export default function GraphCanvas({ projectId }) {
     return () => issuesUnsub();
   }, [projectId]);
   
-  const getLabelColor = useCallback((labelName) => {
-    const label = combinedLabels.find(l => l.name === labelName);
+  const getLabelColor = useCallback((labelsArray) => {
+    if (!labelsArray || labelsArray.length === 0) return '#6b7280'; // default gray
+    const firstLabelName = labelsArray[0];
+    const label = combinedLabels.find(l => l.name === firstLabelName);
     return label ? label.color : '#6b7280';
   }, [combinedLabels]);
 
@@ -89,7 +91,6 @@ export default function GraphCanvas({ projectId }) {
         <div className="p-4 border-b flex justify-between items-center"><h2 className="text-xl font-bold text-gray-800">Eisenhower Matrix</h2><button onClick={() => { setIssueToEdit(null); setModalOpen(true); }} className="flex items-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-colors"><Plus size={18} /> Add Issue</button></div>
         <div className="flex-1 relative p-4">
           <svg ref={svgRef} className="w-full h-full graph-bg rounded-md">
-            {/* FIX: Re-added the quadrant dividing lines */}
             <line x1="50%" y1="0" x2="50%" y2="100%" className="stroke-gray-300" strokeWidth="1" />
             <line x1="0" y1="50%" x2="100%" y2="50%" className="stroke-gray-300" strokeWidth="1" />
             
@@ -98,12 +99,12 @@ export default function GraphCanvas({ projectId }) {
             <QuadrantLabel x="25%" y="75%">Not Important & Urgent</QuadrantLabel>
             <QuadrantLabel x="75%" y="75%">Not Important & Not Urgent</QuadrantLabel>
             
-            {issues.map(issue => <IssueNode key={issue.id} issue={issue} svgRef={svgRef} onPositionChange={handleNodePositionChange} onShowTooltip={showTooltip} onHideTooltip={hideTooltip} onUpdateTooltip={updateTooltipPosition} onShowContextMenu={showContextMenu} color={getLabelColor(issue.label)} />)}
+            {issues.map(issue => <IssueNode key={issue.id} issue={issue} svgRef={svgRef} onPositionChange={handleNodePositionChange} onShowTooltip={showTooltip} onHideTooltip={hideTooltip} onUpdateTooltip={updateTooltipPosition} onShowContextMenu={showContextMenu} color={getLabelColor(issue.labels)} />)}
           </svg>
         </div>
       </div>
       
-      <Tooltip tooltip={tooltip} color={getLabelColor(tooltip.data?.label)} />
+      <Tooltip tooltip={tooltip} allLabels={combinedLabels} />
 
       {contextMenu.visible && (
         <div style={{ top: contextMenu.position.y, left: contextMenu.position.x }} className="absolute bg-white rounded-md shadow-lg border text-sm py-1 z-50">
