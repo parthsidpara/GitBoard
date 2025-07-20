@@ -36,7 +36,7 @@ export default function IssueModal({ isOpen, onClose, onSave, issue, labels }) {
     const handleSubmit = (e) => { e.preventDefault(); onSave(formData); onClose(); };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md m-4">
         <h2 className="text-2xl font-bold mb-6">{issue ? 'Edit Issue' : 'Add New Issue'}</h2>
         <form onSubmit={handleSubmit}>
