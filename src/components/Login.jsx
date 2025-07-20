@@ -1,7 +1,8 @@
 import { signInWithGoogle } from '../firebase';
 import { ShieldCheck } from 'lucide-react';
 
-export default function Login() {
+// Added an optional message prop to guide users during the import flow
+export default function Login({ message }) {
   const handleLogin = async () => {
     try {
       await signInWithGoogle();
@@ -15,8 +16,8 @@ export default function Login() {
       <div className="w-full max-w-sm p-8 space-y-8 bg-white rounded-2xl shadow-lg text-center">
         <div className="flex flex-col items-center">
           <ShieldCheck className="w-16 h-16 text-blue-600" />
-          <h1 className="mt-4 text-3xl font-bold text-gray-900">Matrix Planner</h1>
-          <p className="mt-2 text-gray-600">Prioritize your tasks with the Eisenhower Matrix.</p>
+          <h1 className="mt-4 text-3xl font-bold text-gray-900">Git Board</h1>
+          <p className="mt-2 text-gray-600">{message || "Prioritize github issues of your projects with the Eisenhower Matrix."}</p>
         </div>
         <button
           onClick={handleLogin}

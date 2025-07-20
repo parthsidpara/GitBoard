@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db, logout } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
-import { Plus, MoreHorizontal, Edit, Trash2, LogOut, Loader2, Tags } from 'lucide-react';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { Plus, MoreHorizontal, Edit, Trash2, LogOut, Loader2, Tags, Share2 } from 'lucide-react';
 import RenameModal from './RenameModal';
 import ConfirmModal from './ConfirmModal';
 import LabelManagerModal from './LabelManagerModal';
+import ShareModal from './ShareModal';
 
 export default function Sidebar({ user, currentProjectId, setCurrentProjectId }) {
   const [projects, setProjects] = useState([]);
@@ -13,6 +14,8 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isLabelModalOpen, setLabelModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState(null);
+  const [isShareModalOpen, setShareModalOpen] = useState(false);
+  const [shareLink, setShareLink] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -37,18 +40,41 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
       const projectsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       projectsData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setProjects(projectsData);
-
-      const hasCurrentProject = projectsData.some(p => p.id === currentProjectId);
-      if (!hasCurrentProject && projectsData.length > 0) {
-        setCurrentProjectId(projectsData[0].id);
-      }
-      
+      if (!currentProjectId && projectsData.length > 0) setCurrentProjectId(projectsData[0].id);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [user, currentProjectId, setCurrentProjectId]);
 
+  const handleShareProject = async (project) => {
+    if (!project) return;
+    
+    // 1. Get all issues from the private project
+    const issuesRef = collection(db, 'projects', project.id, 'issues');
+    const issuesSnapshot = await getDocs(issuesRef);
+    const issuesData = issuesSnapshot.docs.map(doc => doc.data());
+
+    // 2. Create a new document in the public 'sharedCanvases' collection
+    const sharedCanvasRef = await addDoc(collection(db, 'sharedCanvases'), {
+      name: project.name,
+      originalOwnerId: user.uid,
+      sharedAt: serverTimestamp(),
+    });
+
+    // 3. Use a batch write to copy all issues to the new public subcollection
+    const batch = writeBatch(db);
+    issuesData.forEach(issue => {
+      const newIssueRef = doc(collection(db, 'sharedCanvases', sharedCanvasRef.id, 'issues'));
+      batch.set(newIssueRef, issue);
+    });
+    await batch.commit();
+
+    // 4. Generate the link and show the modal
+    const link = `${window.location.origin}/?share=${sharedCanvasRef.id}`;
+    setShareLink(link);
+    setShareModalOpen(true);
+  };
 
   const handleNewProject = async () => {
     const newProjectRef = await addDoc(collection(db, "projects"), { name: "New Canvas", ownerId: user.uid, createdAt: serverTimestamp() });
@@ -84,7 +110,7 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
             <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin text-gray-500" /></div>
           ) : (
             projects.map(project => (
-              <ProjectItem key={project.id} project={project} isActive={project.id === currentProjectId} onSelect={() => setCurrentProjectId(project.id)} onRename={() => { setProjectToEdit(project); setRenameModalOpen(true); }} onDelete={() => { setProjectToEdit(project); setDeleteModalOpen(true); }} />
+              <ProjectItem key={project.id} project={project} isActive={project.id === currentProjectId} onSelect={() => setCurrentProjectId(project.id)} onRename={() => { setProjectToEdit(project); setRenameModalOpen(true); }} onDelete={() => { setProjectToEdit(project); setDeleteModalOpen(true); }} onShare={() => handleShareProject(project)}/>
             ))
           )}
         </nav>
@@ -110,11 +136,12 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
       {isRenameModalOpen && <RenameModal isOpen={isRenameModalOpen} onClose={() => setRenameModalOpen(false)} onRename={handleRename} currentName={projectToEdit?.name} />}
       {isDeleteModalOpen && <ConfirmModal isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={handleDelete} title="Delete Canvas" message={`Are you sure you want to delete "${projectToEdit?.name}"? This action cannot be undone.`} />}
       {isLabelModalOpen && <LabelManagerModal isOpen={isLabelModalOpen} onClose={() => setLabelModalOpen(false)} user={user} />}
+      {isShareModalOpen && <ShareModal isOpen={isShareModalOpen} onClose={() => setShareModalOpen(false)} link={shareLink} />}
     </>
   );
 }
 
-function ProjectItem({ project, isActive, onSelect, onRename, onDelete }) {
+function ProjectItem({ project, isActive, onSelect, onRename, onDelete, onShare }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   return (
     <div className={`relative flex items-center justify-between p-2 rounded-md cursor-pointer ${isActive ? 'bg-blue-100 text-blue-800 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`} onClick={onSelect}>
@@ -122,6 +149,7 @@ function ProjectItem({ project, isActive, onSelect, onRename, onDelete }) {
       <button onClick={(e) => { e.stopPropagation(); setDropdownOpen(prev => !prev); }} className="p-1 rounded-full hover:bg-gray-300"><MoreHorizontal size={16} /></button>
       {dropdownOpen && (
         <div className="absolute right-0 top-8 mt-1 w-32 bg-white rounded-md shadow-lg border z-10">
+          <a href="#" onClick={(e) => { e.stopPropagation(); onShare(); setDropdownOpen(false); }} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Share2 size={14}/> Share</a>
           <a href="#" onClick={(e) => { e.stopPropagation(); onRename(); setDropdownOpen(false); }} className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Edit size={14}/> Rename</a>
           <a href="#" onClick={(e) => { e.stopPropagation(); onDelete(); setDropdownOpen(false); }} className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={14}/> Delete</a>
         </div>
