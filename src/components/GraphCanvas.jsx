@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, addDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import IssueNode from './IssueNode';
 import IssueModal from './IssueModal';
+import ImportIssuesModal from './ImportIssuesModal';
 import ConfirmModal from './ConfirmModal';
 import Tooltip from './Tooltip';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Import } from 'lucide-react';
 
 const defaultLabels = [
   { id: 'default-bug', name: 'Bug', color: '#ef4444' },
@@ -20,6 +21,7 @@ export default function GraphCanvas({ projectId }) {
   // const [userLabels, setUserLabels] = useState([]);
   const [combinedLabels, setCombinedLabels] = useState(defaultLabels);
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [issueToEdit, setIssueToEdit] = useState(null);
   const [issueToDelete, setIssueToDelete] = useState(null);
@@ -45,7 +47,7 @@ export default function GraphCanvas({ projectId }) {
     });
     return () => issuesUnsub();
   }, [projectId]);
-  
+
   const getLabelColor = useCallback((labelsArray) => {
     if (!labelsArray || labelsArray.length === 0) return '#6b7280'; // default gray
     const firstLabelName = labelsArray[0];
@@ -63,6 +65,49 @@ export default function GraphCanvas({ projectId }) {
     } else {
       await addDoc(collection(db, 'projects', projectId, 'issues'), { ...issueData, x: 0.5, y: 0.5 });
     }
+  };
+
+  // Handle Import
+  const handleImportIssues = async (issuesToImport) => {
+    if (!user || !projectId || issuesToImport.length === 0) return;
+
+    // 1. Find labels from imported issues that the user doesn't have
+    const allImportedLabelNames = new Set(issuesToImport.flatMap(issue => issue.labels));
+    const existingLabelNames = new Set(combinedLabels.map(l => l.name));
+    const newLabelNames = [...allImportedLabelNames].filter(name => !existingLabelNames.has(name));
+
+    if (newLabelNames.length > 0) {
+      const labelBatch = writeBatch(db);
+      const labelsRef = collection(db, 'users', user.uid, 'labels');
+      const getRandomColor = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+      
+      newLabelNames.forEach(name => {
+        const newLabelRef = doc(labelsRef);
+        labelBatch.set(newLabelRef, { name, color: getRandomColor() });
+      });
+      await labelBatch.commit();
+    }
+
+    // 2. Batch write the new issues to the canvas with calculated positions
+    const issueBatch = writeBatch(db);
+    const issuesRef = collection(db, 'projects', projectId, 'issues');
+    const issuesPerColumn = 11;
+    const columnWidth = 0.07;
+    const rowHeight = 0.09;
+    const startX = 0.05;
+    const startY = 0.05;
+
+    issuesToImport.forEach((issue, index) => {
+      const columnIndex = Math.floor(index / issuesPerColumn);
+      const rowIndex = index % issuesPerColumn;
+      
+      const x = startX + (columnIndex * columnWidth);
+      const y = 1 - (startY + (rowIndex * rowHeight)); 
+
+      const newIssueRef = doc(issuesRef);
+      issueBatch.set(newIssueRef, { ...issue, x, y });
+    });
+    await issueBatch.commit();
   };
 
   const handleDeleteIssue = async () => {
@@ -88,32 +133,38 @@ export default function GraphCanvas({ projectId }) {
   return (
     <>
       <div className="flex-1 flex flex-col bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b flex justify-between items-center"><h2 className="text-xl font-bold text-gray-800">Eisenhower Matrix</h2><button onClick={() => { setIssueToEdit(null); setModalOpen(true); }} className="flex items-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-colors"><Plus size={18} /> Add Issue</button></div>
+        <div className="p-4 border-b flex justify-between items-center"><h2 className="text-xl font-bold text-gray-800">Eisenhower Matrix</h2>
+          <div className='flex'>
+            <button onClick={() => { setIssueToEdit(null); setModalOpen(true); }} className="flex items-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-colors mx-1"><Plus size={18} /> Add Issue</button>
+            <button onClick={() => { setIssueToEdit(null); setImportModalOpen(true); }} className="flex items-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-colors mx-1"><Import size={18} /> Import Issues</button>
+          </div>
+        </div>
         <div className="flex-1 relative p-4">
           <svg ref={svgRef} className="w-full h-full graph-bg rounded-md">
             <line x1="50%" y1="0" x2="50%" y2="100%" className="stroke-gray-300" strokeWidth="1" />
             <line x1="0" y1="50%" x2="100%" y2="50%" className="stroke-gray-300" strokeWidth="1" />
-            
+
             <QuadrantLabel x="25%" y="25%">Important & Urgent</QuadrantLabel>
             <QuadrantLabel x="75%" y="25%">Important & Not Urgent</QuadrantLabel>
             <QuadrantLabel x="25%" y="75%">Not Important & Urgent</QuadrantLabel>
             <QuadrantLabel x="75%" y="75%">Not Important & Not Urgent</QuadrantLabel>
-            
+
             {issues.map(issue => <IssueNode key={issue.id} issue={issue} svgRef={svgRef} onPositionChange={handleNodePositionChange} onShowTooltip={showTooltip} onHideTooltip={hideTooltip} onUpdateTooltip={updateTooltipPosition} onShowContextMenu={showContextMenu} color={getLabelColor(issue.labels)} />)}
           </svg>
         </div>
       </div>
-      
+
       <Tooltip tooltip={tooltip} allLabels={combinedLabels} />
 
       {contextMenu.visible && (
         <div style={{ top: contextMenu.position.y, left: contextMenu.position.x }} className="absolute bg-white rounded-md shadow-lg border text-sm py-1 z-50">
-          <div onClick={() => { setIssueToEdit(contextMenu.issue); setModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 cursor-pointer"><Edit size={14}/> Edit</div>
-          <div onClick={() => { setIssueToDelete(contextMenu.issue); setDeleteModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-red-600"><Trash2 size={14}/> Delete</div>
+          <div onClick={() => { setIssueToEdit(contextMenu.issue); setModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 cursor-pointer"><Edit size={14} /> Edit</div>
+          <div onClick={() => { setIssueToDelete(contextMenu.issue); setDeleteModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-red-600"><Trash2 size={14} /> Delete</div>
         </div>
       )}
 
       {isModalOpen && <IssueModal isOpen={isModalOpen} onClose={() => setModalOpen(false)} onSave={handleSaveIssue} issue={issueToEdit} labels={combinedLabels} />}
+      {isImportModalOpen && <ImportIssuesModal isOpen={isImportModalOpen} onImport={handleImportIssues} onClose={() => setImportModalOpen(false)} />}
       {isDeleteModalOpen && <ConfirmModal isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)} onConfirm={handleDeleteIssue} title="Delete Issue" message={`Are you sure you want to delete issue "${issueToDelete?.number || contextMenu.issue?.number}"?`} />}
     </>
   );
