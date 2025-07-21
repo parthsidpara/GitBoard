@@ -123,15 +123,15 @@ export default function Sidebar({ user, currentProjectId, setCurrentProjectId })
 
         {/* profile and logout section */}
         <div className="p-4 border-t border-gray-200 space-y-4">
-          <button onClick={() => setLabelModalOpen(true)} className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors">
-            <Tags size={16} /> Manage Labels
-          </button>
-          
+      
           <div className="space-y-2">
             <div className="flex items-center gap-3 p-2">
               <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full" />
               <span className="text-sm font-medium text-gray-700 truncate">{user.displayName}</span>
             </div>
+            <button onClick={() => setLabelModalOpen(true)} className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-colors">
+              <Tags size={16} /> Manage Labels
+            </button>
             <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors">
               <LogOut size={16} /> Logout
             </button>
