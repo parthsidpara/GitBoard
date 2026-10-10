@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    // Private canvases. Only the owner can read or mutate them and their issues.
+    match /projects/{projectId} {
+      allow read, update, delete: if isOwner(resource.data.ownerId);
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;
+
+      match /issues/{issueId} {
+        allow read, write: if isOwner(
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId
+        );
+      }
+    }
+
+    // Per-user label definitions.
+    match /users/{userId}/labels/{labelId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Public, immutable snapshots created when a user shares a canvas.
+    // Anyone with the link may read; only the signed-in original owner may create.
+    match /sharedCanvases/{shareId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.originalOwnerId == request.auth.uid;
+      allow update, delete: if false;
+
+      match /issues/{issueId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow update, delete: if false;
+      }
+    }
+  }
+}
